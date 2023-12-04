@@ -1,0 +1,8 @@
+{
+  "semi": true,
+  "singleQuote": false,
+  "endOfLine": "crlf",
+  "plugins": ["prettier-plugin-solidity"],
+  "tabWidth": 4,
+  "useTabs": false
+}
