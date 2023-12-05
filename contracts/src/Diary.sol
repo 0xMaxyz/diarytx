@@ -45,7 +45,6 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
     function CreateDiary(
         string calldata diaryUri,
         bool addAiCover,
-        address[3] calldata sharedWith,
         Enums.State state
     ) public payable {
         // Check if the requested address has registered diaries for current date
@@ -57,11 +56,11 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
             }
             // Check if the caller has a profile token
             if (!hasProfile(_msgSender())) {
-                // mint a new profile token for the caller
+                // mint a new profile/follower token for the caller
                 mintProfile();
             }
             // Create the diary
-            _createDiary(msg.sender, diaryUri, addAiCover, sharedWith, state);
+            _createDiary(msg.sender, diaryUri, addAiCover, state);
         } else {
             if (addAiCover) {
                 if (msg.value < DiaryCoverFee + DiarySavingFee) {
@@ -72,14 +71,15 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
                     revert Errors.Diary__InsufficientFee();
                 }
             }
+            if (!hasProfile(_msgSender())) {
+                // mint a new profile/follower token for the caller
+                mintProfile();
+            }
             // create the diary
-            _createDiary(msg.sender, diaryUri, addAiCover, sharedWith, state);
+            _createDiary(msg.sender, diaryUri, addAiCover, state);
         }
-        // emit the diary created event
-        emit Events.DiaryCreated(msg.sender, DiaryMetaData[s_lastTokenId]);
-        unchecked {
-            s_lastTokenId++;
-        }
+
+        increaseLastTokenId();
     }
 
     function mintProfile() private {
@@ -110,6 +110,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
 
         // emit Follower token mint
         emit Events.FollowerTokensMint(_msgSender(), s_lastTokenId);
+
         increaseLastTokenId();
     }
 
@@ -127,32 +128,28 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         address diaryOwner,
         string calldata diaryUri,
         bool addAiCover,
-        address[3] calldata sharedWith,
         Enums.State state
     ) private {
-        DiaryOwners[s_lastTokenId] = msg.sender;
+        // Mint the new diary for _msgSender()
+        mint(_msgSender(), s_lastTokenId, 1, "");
+
+        DiaryOwners[s_lastTokenId] = _msgSender();
         string memory aiCover = addAiCover ? GetCover(diaryOwner) : "";
-        DiaryMetaData[s_lastTokenId] = _createMetadata(
-            diaryUri,
-            aiCover,
-            sharedWith,
-            state
-        );
+        DiaryMetaData[s_lastTokenId] = _createMetadata(diaryUri, aiCover, state);
+
+        // emit the diary created event
+        emit Events.DiaryCreated(_msgSender(), DiaryMetaData[s_lastTokenId]);
     }
 
     function _createMetadata(
         string calldata diaryUri,
         string memory aiCover,
-        address[3] calldata sharedWith,
         Enums.State state
     ) private view returns (Structs.DiaryMetadata memory) {
         return
             Structs.DiaryMetadata({
                 DiaryUri: diaryUri,
                 AiCover: aiCover,
-                SharedWith0: sharedWith[0],
-                SharedWith1: sharedWith[1],
-                SharedWith2: sharedWith[2],
                 State: state,
                 CreatedTimestamp: block.timestamp,
                 ModifiedTimestamp: block.timestamp
@@ -163,18 +160,12 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         address diaryOwner
     ) public view returns (uint8 numberOfDiaries) {
         uint256 lastSaveDate = LastSaveDate[diaryOwner];
-        (
-            uint256 lastSaveDay,
-            uint256 lastSaveMonth,
-            uint256 lastSaveYear
-        ) = lastSaveDate.GetDate();
+        (uint256 lastSaveDay, uint256 lastSaveMonth, uint256 lastSaveYear) = lastSaveDate.GetDate();
 
         if (lastSaveDate == 0) {
             return 0;
         }
-        (uint256 currentDay, uint256 currentMonth, uint256 currentYear) = block
-            .timestamp
-            .GetDate();
+        (uint256 currentDay, uint256 currentMonth, uint256 currentYear) = block.timestamp.GetDate();
         if (
             lastSaveDay != currentDay ||
             lastSaveMonth != currentMonth ||
@@ -195,12 +186,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         _setURI(newuri);
     }
 
-    function mint(
-        address account,
-        uint256 id,
-        uint256 amount,
-        bytes memory data
-    ) private {
+    function mint(address account, uint256 id, uint256 amount, bytes memory data) private {
         _mint(account, id, amount, data);
     }
 
@@ -222,9 +208,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         super._update(from, to, ids, values);
     }
 
-    // todo: this func should use chainlink functions to retrieve the cover
-    function GetCover(
-        address diaryUri
-    ) private returns (string memory aiCover) {}
+    // TODO: this func should use chainlink functions to retrieve the cover
+    function GetCover(address diaryUri) private returns (string memory aiCover) {}
 }
 

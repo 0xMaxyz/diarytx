@@ -6,9 +6,6 @@ library Structs {
     struct DiaryMetadata {
         string DiaryUri;
         string AiCover;
-        address SharedWith0;
-        address SharedWith1;
-        address SharedWith2;
         Enums.State State;
         uint256 CreatedTimestamp;
         uint256 ModifiedTimestamp;
