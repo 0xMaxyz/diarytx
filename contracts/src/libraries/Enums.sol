@@ -7,4 +7,9 @@ library Enums {
         Shareable, // Signed by an intermediary entity's key
         Private // Signed by issuer's key
     }
+
+    enum ProfieVisibility {
+        Private,
+        Public
+    }
 }

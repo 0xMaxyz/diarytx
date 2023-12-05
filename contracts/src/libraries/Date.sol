@@ -3,7 +3,9 @@ pragma solidity ^0.8.20;
 
 library Date {
     /// @dev The visibility of this function shall be changed to external for the test to run successfully
-    function GetDate(uint timestamp) internal pure returns (uint day, uint month, uint year) {
+    function GetDate(
+        uint timestamp
+    ) internal pure returns (uint day, uint month, uint year) {
         unchecked {
             int __days = int(timestamp / 86400);
 

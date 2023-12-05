@@ -9,4 +9,5 @@ library Errors {
     error Diary__SharedSlotsAreFull();
     error Diary__NotSharedWithInput();
     error Diary__PublicKeyAlreadySaved();
+    error Diary__ProfileExists(uint256);
 }
