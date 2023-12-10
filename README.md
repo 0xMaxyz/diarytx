@@ -5,9 +5,9 @@
 To set up the Diary smart contract for development on your local machine, make sure you have [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed. You'll also need [Hardhat](https://hardhat.org/getting-started/) for compiling, testing, and deploying the smart contract, as well as [Next.js](https://nextjs.org/) for the frontend application.
 
 ```bash
-# Clone the repository (Replace `<repo_url>` with the actual repository URL)
-git clone <repo_url>
-cd path_to_contract
+# Clone the repository
+git clone https://github.com/omni001s/diarytx.git
+cd diarytx
 
 # Install Hardhat and project dependencies
 npm install
@@ -18,12 +18,11 @@ npx hardhat compile
 # Run tests
 npx hardhat test
 
-# Deploy to a local test network
+# Deploy to a local test network (harthat node)
 npx hardhat node
-npx hardhat run scripts/deploy.js --network localhost
 ```
 
-Ensure you have copied the deployed contract address and ABI to the frontend's configuration file for it to interact correctly with the smart contract.
+Ensure you have copied the deployed contract address and ABI to the frontend's configuration file for it to interact correctly with the smart contract (the default config uses relative address that should work, check constants.js in ./web/context/constants.js).
 
 ## Inspiration
 
@@ -41,8 +40,4 @@ The smart contract is written in Solidity ^0.8.20 and uses OpenZeppelin's ERC115
 
 The user interface is built with Next.js, offering a responsive client-side application that interacts seamlessly with the smart contract. State management is handled efficiently to provide a smooth user experience while interacting with the Ethereum blockchain. The frontend handles tasks such as sending transactions to create diaries, manage profile visibility, and follow or unfollow other profiles. It also captures events emitted by the smart contract to update the UI accordingly.
 
-Remember to set your `.env.local` file in your Next.js project with your smart contract's address and ABI for the necessary smart contract interactions.
-
----
-
-Note: The detailed implementation guide, as well as the full features of the diary entries, visible timelines, profile management, and social interactions through followings, are documented within the respective project sections for comprehensive understanding and ease of use.
+The `.env` file shall be set for the contract to work properly, a `.env.example` file is provided in this repository that could be used to make `.env` file.
