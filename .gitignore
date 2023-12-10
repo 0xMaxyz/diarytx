@@ -17,3 +17,5 @@ ignore
 *.lock
 *.log
 *.ignore
+web
+
