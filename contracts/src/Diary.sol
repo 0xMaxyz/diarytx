@@ -18,13 +18,14 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     uint256 nonce;
     uint256 public DiarySavingFee;
     uint256 public DiaryCoverFee;
+    uint256 constant ADDITIONAL_PROFILE_FEE = 100; // 100 follower token
 
     // Track last save date
     mapping(address => uint256) private lastSaveDate;
 
     // Follower token
     uint8 constant FOLLOWER_TOKEN_ID = 1;
-    uint256 public followerTokenPrice = 1 ether; // per FOLLOWER_PRICE_PER_QUANTITY follower tokens
+    uint256 public followerTokenPrice = 1; // per FOLLOWER_PRICE_PER_QUANTITY follower tokens
     uint256 private constant FOLLOWER_PRICE_PER_QUANTITY = 100;
     uint256 public discountRate = 10;
     mapping(address => mapping(uint256 => bool)) private isFollowing;
@@ -61,6 +62,20 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
 
         // Mint a profile for contract owner (add as public profile)
         mintProfile(ownerProfileUri, false);
+    }
+
+    function CreateProfile(string memory profileUri, bool isPrivate) external payable {
+        // check if sender has a profile or not
+        if (hasProfile[msg.sender]) {
+            // then the requester, should pay for additional profile registration
+            if (balanceOf(msg.sender, FOLLOWER_TOKEN_ID) < ADDITIONAL_PROFILE_FEE) {
+                revert Errors.Diary__InsufficientFee();
+            }
+            mintProfile(profileUri, isPrivate);
+        } else {
+            // no profile is registered for the requester, no fee is required
+            mintProfile(profileUri, isPrivate);
+        }
     }
 
     function _getUniqueId(Enums.TokenType tokenType) private view returns (uint256) {
