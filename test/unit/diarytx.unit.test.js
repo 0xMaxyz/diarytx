@@ -36,7 +36,7 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat.confi
                   assert.equal(ethers.parseEther(process.env.INIT_COVER_FEE), diaryCoverFee);
               });
 
-              it("Should set the right owner", async function () {
+              it("Should set the right owner", async () => {
                   expect(await diaryContract.owner()).to.equal(deployer);
               });
 
@@ -80,9 +80,109 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat.confi
               });
           });
 
-          describe("Profiles", () => {
-              it("Should allow to make one free profile per each address", async () => {
-                  //await diaryContract.connect(user1).CreateProfile("uri", false);
+          describe("CreateProfile", () => {
+              const ADDITIONAL_PROFILE_FEE = ethers.parseEther("100");
+              const profileUri = "profileUri";
+
+              it("Allows user without a profile to create one without a fee", async () => {
+                  user1Signer = await ethers.getSigner(user1);
+
+                  const tx = await diaryContract
+                      .connect(user1Signer)
+                      .CreateProfile(profileUri, false);
+                  const txnReceipt = await tx.wait(1);
+
+                  // ProfileMint event signature
+                  const profileMintEventSignature = ethers.id(
+                      "ProfileMint(address,uint256,string)",
+                  );
+
+                  // loop through the transaction receipt logs
+                  for (const log of txnReceipt.logs) {
+                      // Find ProfileMint event signature from transaction receipt logs
+                      if (log.topics[0] === profileMintEventSignature) {
+                          // Decode and extract the event parameters
+                          const decodedEvent = diaryContract.interface.decodeEventLog(
+                              "ProfileMint",
+                              log.data,
+                              log.topics,
+                          );
+                          // Access the event parameters directly
+                          const minterAddress = decodedEvent[0];
+                          const tokenId = decodedEvent[1];
+                          const hashedTokenUri = decodedEvent[2];
+
+                          var hashedInputUri = ethers.keccak256(ethers.toUtf8Bytes(profileUri));
+
+                          const secondPublicProfile = await diaryContract.publicProfileIds(1);
+
+                          assert(minterAddress == user1);
+                          assert(hashedTokenUri.hash == hashedInputUri);
+                          assert(tokenId == secondPublicProfile);
+                      }
+                  }
+              });
+
+              it("Allows user with a profile to create an additional one with sufficient fee", async () => {
+                  // User creates initial profile without fee
+                  user1Signer = await ethers.getSigner(user1);
+
+                  const tx = await diaryContract
+                      .connect(user1Signer)
+                      .CreateProfile(profileUri, false);
+                  await tx.wait(1);
+
+                  // User attempts to create an additional profile with fee
+                  const txWithFee = await diaryContract
+                      .connect(user1Signer)
+                      .CreateProfile(profileUri, false, {
+                          value: ADDITIONAL_PROFILE_FEE,
+                      });
+                  const txnReceipt = await txWithFee.wait(1);
+
+                  // ProfileMint event signature
+                  const profileMintEventSignature = ethers.id(
+                      "ProfileMint(address,uint256,string)",
+                  );
+
+                  // loop through the transaction receipt logs
+                  for (const log of txnReceipt.logs) {
+                      // Find ProfileMint event signature from transaction receipt logs
+                      if (log.topics[0] === profileMintEventSignature) {
+                          // Decode and extract the event parameters
+                          const decodedEvent = diaryContract.interface.decodeEventLog(
+                              "ProfileMint",
+                              log.data,
+                              log.topics,
+                          );
+                          // Access the event parameters directly
+                          const minterAddress = decodedEvent[0];
+                          const tokenId = decodedEvent[1];
+                          const hashedTokenUri = decodedEvent[2];
+
+                          var hashedInputUri = ethers.keccak256(ethers.toUtf8Bytes(profileUri));
+
+                          const thirdPublicProfile = await diaryContract.publicProfileIds(2);
+
+                          assert(minterAddress == user1);
+                          assert(hashedTokenUri.hash == hashedInputUri);
+                          assert(tokenId == thirdPublicProfile);
+                      }
+                  }
+              });
+
+              it("Reverts if user with a profile does not pay sufficient fee for an additional one", async () => {
+                  // User creates initial profile without fee
+                  user1Signer = await ethers.getSigner(user1);
+
+                  const tx = await diaryContract
+                      .connect(user1Signer)
+                      .CreateProfile(profileUri, false);
+                  await tx.wait(1);
+
+                  // User attempts to create an additional profile without paying the ADDITIONAL_PROFILE_FEE
+                  await expect(diaryContract.connect(user1Signer).CreateProfile(profileUri, false))
+                      .to.be.reverted;
               });
           });
       });

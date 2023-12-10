@@ -39,7 +39,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     // Profiles
     mapping(address => mapping(uint256 => bool)) private profileTokens;
     mapping(uint256 => address) private profileOwnedBy;
-    mapping(address => bool) private hasProfile;
+    mapping(address => bool) public hasProfile;
     mapping(uint256 => mapping(uint256 => bool)) private profileDiaries;
     mapping(uint256 => Structs.Profile) private profileData;
 
@@ -68,13 +68,15 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         // check if sender has a profile or not
         if (hasProfile[msg.sender]) {
             // then the requester, should pay for additional profile registration
-            if (balanceOf(msg.sender, FOLLOWER_TOKEN_ID) < ADDITIONAL_PROFILE_FEE) {
+            if (msg.value < ADDITIONAL_PROFILE_FEE) {
                 revert Errors.Diary__InsufficientFee();
             }
             mintProfile(profileUri, isPrivate);
         } else {
             // no profile is registered for the requester, no fee is required
             mintProfile(profileUri, isPrivate);
+            // mint 1000 follower token for the requester
+            _mint(msg.sender, FOLLOWER_TOKEN_ID, 1000, "");
         }
     }
 
