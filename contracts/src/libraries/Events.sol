@@ -32,5 +32,16 @@ library Events {
         uint256 indexed tokenId,
         string indexed tokenUri
     );
-    event FollowerTokensMint(address profileOwner, uint256 tokenId);
+
+    event ProfileFollowed(
+        address indexed followerAddress,
+        address indexed followeeAddress,
+        uint256 indexed followedProfileId
+    );
+
+    event ProfileUnfollowed(
+        address indexed followerAddress,
+        address indexed followeeAddress,
+        uint256 indexed followedProfileId
+    );
 }

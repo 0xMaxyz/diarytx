@@ -11,4 +11,9 @@ library Errors {
     error Diary__PublicKeyAlreadySaved();
     error Diary__ProfileExists(uint256);
     error Diary__ProfileNotOwnedByYou();
+    error Diary__NotEnoughFollowerToken();
+    error Diary__NotAllowedToFollowYourself();
+    error Diary__ProfileNotOwnedByAnyone();
+    error Diary__ProfileAlreadyFollowedByYou();
+    error Diary__ProfileNotFollowedByYou();
 }

@@ -5,29 +5,39 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./libraries/Date.sol";
 import "./libraries/Errors.sol";
 import "./libraries/Structs.sol";
 import "./libraries/Events.sol";
 import "./libraries/Enums.sol";
 
-contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
+contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGuard {
     using Date for uint256;
 
     uint256 nonce;
     uint256 public DiarySavingFee;
     uint256 public DiaryCoverFee;
 
-    uint8 constant FOLLOWER_TOKEN_ID = 1;
-
+    // Track last save date
     mapping(address => uint256) LastSaveDate;
+
+    // Follower token
+    uint8 constant FOLLOWER_TOKEN_ID = 1;
+    uint256 public followerTokenPrice = 1 ether; // per FOLLOWER_PRICE_PER_QUANTITY follower tokens
+    uint256 private constant FOLLOWER_PRICE_PER_QUANTITY = 100;
+    uint256 public discountRate = 10;
+    mapping(address profileOwner => mapping(uint256 followedProfileId => bool isFollowed)) IsFollowing;
+    mapping(uint256 => address[]) private profileFollowers;
+    mapping(uint256 => mapping(address => uint256)) private profileFollowerIndexes;
 
     // Diary
     mapping(uint256 => address) DiaryOwners;
     mapping(uint256 diaryTokenId => Enums.DiaryVisibility visibility) DiaryVisibility;
 
     // Profiles
-    mapping(address profileOwner => mapping(uint256 profileTokenID => bool isOwned)) Profiles;
+    mapping(address profileOwner => mapping(uint256 profileTokenID => bool isOwned)) ProfileTokens;
+    mapping(uint256 profileTokenId => address ownerAddress) ProfileOwnedBy;
     mapping(address profileOwner => bool hasProfile) HasProfile;
     mapping(uint256 profileTokenId => mapping(uint256 diaryTokenId => bool ownedByProfile)) ProfileDiaries;
 
@@ -75,7 +85,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         Enums.DiaryVisibility diaryVisibility
     ) public payable {
         // Check if profile is owned by caller
-        if (!Profiles[msg.sender][profileId]) {
+        if (!ProfileTokens[msg.sender][profileId]) {
             revert Errors.Diary__ProfileNotOwnedByYou();
         }
         // Check if the requested address has registered diaries for current date
@@ -103,10 +113,13 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         TokenUri[profileTokenId] = profileUri;
 
         // Add to Profiles
-        Profiles[msg.sender][profileTokenId] = true;
+        ProfileTokens[msg.sender][profileTokenId] = true;
 
         // set HasProfile to true
         HasProfile[msg.sender] = true;
+
+        // set profileTokenId as owned
+        ProfileOwnedBy[profileTokenId] = msg.sender;
 
         // emit Profile token mint
         emit Events.ProfileMint(msg.sender, profileTokenId, profileUri);
@@ -195,6 +208,90 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply {
         super._update(from, to, ids, values);
     }
 
-    // TODO: this func should use chainlink functions to retrieve the cover
-    function GetCover(address diaryUri) private returns (string memory aiCover) {}
+    // Follower Token
+    function buyFollowerTokens(uint256 quantity) external payable nonReentrant {
+        uint256 totalPrice = (followerTokenPrice * quantity) / FOLLOWER_PRICE_PER_QUANTITY;
+        if (quantity >= FOLLOWER_PRICE_PER_QUANTITY * 10) {
+            totalPrice = totalPrice - ((totalPrice * discountRate) / 100);
+        }
+        if (msg.value < totalPrice) {
+            revert Errors.Diary__InsufficientFee();
+        }
+
+        _mint(msg.sender, FOLLOWER_TOKEN_ID, quantity, "");
+    }
+
+    function setFollowerTokenPrice(uint256 newPrice) external onlyOwner {
+        followerTokenPrice = newPrice;
+    }
+
+    // Function to follow a profile
+    function followProfile(uint256 followerProfileId, uint256 followeeProfileId) external {
+        if (!ProfileTokens[msg.sender][followerProfileId]) {
+            revert Errors.Diary__ProfileNotOwnedByYou();
+        }
+        if (
+            ProfileTokens[msg.sender][followerProfileId] ==
+            ProfileTokens[msg.sender][followeeProfileId]
+        ) {
+            revert Errors.Diary__NotAllowedToFollowYourself();
+        }
+
+        if (ProfileOwnedBy[followeeProfileId] == address(0)) {
+            revert Errors.Diary__ProfileNotOwnedByAnyone();
+        }
+        if (balanceOf(msg.sender, FOLLOWER_TOKEN_ID) < 1) {
+            revert Errors.Diary__NotEnoughFollowerToken();
+        }
+
+        if (IsFollowing[msg.sender][followeeProfileId]) {
+            revert Errors.Diary__ProfileAlreadyFollowedByYou();
+        }
+
+        // Transfer one Follower Token from the follower to the contract as a 'staking' concept
+        _safeTransferFrom(msg.sender, address(this), FOLLOWER_TOKEN_ID, 1, "");
+
+        // Record that the user is now following the profileId
+        IsFollowing[msg.sender][followeeProfileId] = true;
+        profileFollowers[followeeProfileId].push(msg.sender);
+
+        profileFollowerIndexes[followeeProfileId][msg.sender] =
+            profileFollowers[followeeProfileId].length -
+            1;
+
+        emit Events.ProfileFollowed(
+            msg.sender,
+            ProfileOwnedBy[followeeProfileId],
+            followeeProfileId
+        );
+    }
+
+    // Function to unfollow a profile
+    function unfollowProfile(uint256 profileId) external {
+        if (!IsFollowing[msg.sender][profileId]) {
+            revert Errors.Diary__ProfileNotFollowedByYou();
+        }
+
+        // Transfer the Follower Token back to the unfollower
+        _safeTransferFrom(address(this), msg.sender, FOLLOWER_TOKEN_ID, 1, "");
+
+        // Record that the user has unfollowed the profile
+        IsFollowing[msg.sender][profileId] = false;
+
+        // Remove follower from the profileFollowers list in an efficient way
+        uint256 followerIndex = profileFollowerIndexes[profileId][msg.sender];
+        address lastFollower = profileFollowers[profileId][profileFollowers[profileId].length - 1];
+
+        // Move the last element to the slot of the to-be-removed element
+        profileFollowers[profileId][followerIndex] = lastFollower;
+        // Update the index mapping for the last follower
+        profileFollowerIndexes[profileId][lastFollower] = followerIndex;
+        // Remove the last element
+        profileFollowers[profileId].pop();
+
+        // Clean up our index mapping
+        delete profileFollowerIndexes[profileId][msg.sender];
+
+        emit Events.ProfileUnfollowed(msg.sender, ProfileOwnedBy[profileId], profileId);
+    }
 }
