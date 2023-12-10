@@ -16,4 +16,6 @@ library Errors {
     error Diary__ProfileNotOwnedByAnyone();
     error Diary__ProfileAlreadyFollowedByYou();
     error Diary__ProfileNotFollowedByYou();
+    error Diary__RequestedProfileIsNotPrivate();
+    error Diary__NoActiveFollowRequestForRequester();
 }

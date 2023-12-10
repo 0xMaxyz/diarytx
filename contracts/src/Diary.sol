@@ -20,29 +20,33 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     uint256 public DiaryCoverFee;
 
     // Track last save date
-    mapping(address => uint256) LastSaveDate;
+    mapping(address => uint256) private lastSaveDate;
 
     // Follower token
     uint8 constant FOLLOWER_TOKEN_ID = 1;
     uint256 public followerTokenPrice = 1 ether; // per FOLLOWER_PRICE_PER_QUANTITY follower tokens
     uint256 private constant FOLLOWER_PRICE_PER_QUANTITY = 100;
     uint256 public discountRate = 10;
-    mapping(address profileOwner => mapping(uint256 followedProfileId => bool isFollowed)) IsFollowing;
+    mapping(address => mapping(uint256 => bool)) private isFollowing;
     mapping(uint256 => address[]) private profileFollowers;
     mapping(uint256 => mapping(address => uint256)) private profileFollowerIndexes;
 
     // Diary
-    mapping(uint256 => address) DiaryOwners;
-    mapping(uint256 diaryTokenId => Enums.DiaryVisibility visibility) DiaryVisibility;
+    mapping(uint256 => address) private DiaryOwners;
+    mapping(uint256 => Enums.DiaryVisibility) private diaryVisibility;
 
     // Profiles
-    mapping(address profileOwner => mapping(uint256 profileTokenID => bool isOwned)) ProfileTokens;
-    mapping(uint256 profileTokenId => address ownerAddress) ProfileOwnedBy;
-    mapping(address profileOwner => bool hasProfile) HasProfile;
-    mapping(uint256 profileTokenId => mapping(uint256 diaryTokenId => bool ownedByProfile)) ProfileDiaries;
+    mapping(address => mapping(uint256 => bool)) private profileTokens;
+    mapping(uint256 => address) private profileOwnedBy;
+    mapping(address => bool) private hasProfile;
+    mapping(uint256 => mapping(uint256 => bool)) private profileDiaries;
+    mapping(uint256 => Structs.Profile) private profileData;
+
+    uint256[] public publicProfileIds;
+    mapping(uint256 => uint256) public profileIndexInPublic;
 
     // Token URIs
-    mapping(uint256 tokenId => string tokenMetadataUri) TokenUri;
+    mapping(uint256 => string) private tokenUri;
 
     constructor(
         uint256 diarySavingFee,
@@ -55,8 +59,8 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         // Mint 1000 follower token for contract owner
         _mint(msg.sender, FOLLOWER_TOKEN_ID, 1000, "");
 
-        // Mint a profile for contract owner
-        mintProfile(ownerProfileUri);
+        // Mint a profile for contract owner (add as public profile)
+        mintProfile(ownerProfileUri, false);
     }
 
     function _getUniqueId(Enums.TokenType tokenType) private view returns (uint256) {
@@ -82,27 +86,27 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     function CreateDiary(
         uint256 profileId,
         string calldata diaryUri,
-        Enums.DiaryVisibility diaryVisibility
+        Enums.DiaryVisibility visibility
     ) public payable {
         // Check if profile is owned by caller
-        if (!ProfileTokens[msg.sender][profileId]) {
+        if (!profileTokens[msg.sender][profileId]) {
             revert Errors.Diary__ProfileNotOwnedByYou();
         }
         // Check if the requested address has registered diaries for current date
         if (!MoreThanOneDiaryPerDay(msg.sender)) {
             // Create the diary
-            _createDiary(profileId, diaryUri, diaryVisibility);
+            _createDiary(profileId, diaryUri, visibility);
         } else {
             if (msg.value < DiarySavingFee) {
                 revert Errors.Diary__InsufficientFee();
             }
 
             // create the diary
-            _createDiary(profileId, diaryUri, diaryVisibility);
+            _createDiary(profileId, diaryUri, visibility);
         }
     }
 
-    function mintProfile(string memory profileUri) private {
+    function mintProfile(string memory profileUri, bool isPrivate) private {
         // get unique id
         uint256 profileTokenId = getUniqueIdAndIncrementNonce(Enums.TokenType.ProfileToken);
 
@@ -110,16 +114,25 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         mint(msg.sender, profileTokenId, 1, "");
 
         // Add token uri
-        TokenUri[profileTokenId] = profileUri;
+        tokenUri[profileTokenId] = profileUri;
 
         // Add to Profiles
-        ProfileTokens[msg.sender][profileTokenId] = true;
+        profileTokens[msg.sender][profileTokenId] = true;
 
         // set HasProfile to true
-        HasProfile[msg.sender] = true;
+        hasProfile[msg.sender] = true;
 
         // set profileTokenId as owned
-        ProfileOwnedBy[profileTokenId] = msg.sender;
+        profileOwnedBy[profileTokenId] = msg.sender;
+
+        // add profile data
+        profileData[profileTokenId].isPrivate = isPrivate;
+
+        if (!isPrivate) {
+            // Add this profile to list of public profiles
+            publicProfileIds.push(profileTokenId);
+            profileIndexInPublic[profileTokenId] = publicProfileIds.length - 1;
+        }
 
         // emit Profile token mint
         emit Events.ProfileMint(msg.sender, profileTokenId, profileUri);
@@ -128,7 +141,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     function _createDiary(
         uint256 profileId,
         string calldata diaryUri,
-        Enums.DiaryVisibility diaryVisibility
+        Enums.DiaryVisibility visibility
     ) private {
         // get unique id for the diary
         uint256 diaryId = getUniqueIdAndIncrementNonce(Enums.TokenType.DiaryToken);
@@ -137,29 +150,29 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         mint(msg.sender, diaryId, 1, "");
 
         // set visibbility of diary in its mapping
-        DiaryVisibility[diaryId] = diaryVisibility;
+        diaryVisibility[diaryId] = visibility;
         // set the msg.sender as the owner of this diary in its mapping
         DiaryOwners[diaryId] = msg.sender;
         // add this diary to requested profile which is owned by msg.sender
-        ProfileDiaries[profileId][diaryId] = true;
+        profileDiaries[profileId][diaryId] = true;
 
-        TokenUri[diaryId] = diaryUri;
+        tokenUri[diaryId] = diaryUri;
 
         // emit the diary created event
         emit Events.DiaryCreated(profileId, diaryId, diaryUri);
 
         // Update last save date
-        LastSaveDate[msg.sender] = block.timestamp;
+        lastSaveDate[msg.sender] = block.timestamp;
     }
 
     function MoreThanOneDiaryPerDay(address diaryOwner) public view returns (bool moreThanOne) {
-        uint256 lastSaveDate = LastSaveDate[diaryOwner];
-        if (lastSaveDate == 0) {
+        uint256 lsDate = lastSaveDate[diaryOwner];
+        if (lsDate == 0) {
             return false;
         }
 
         // get last date (d,m,y)
-        (uint256 lastSaveDay, uint256 lastSaveMonth, uint256 lastSaveYear) = lastSaveDate.GetDate();
+        (uint256 lastSaveDay, uint256 lastSaveMonth, uint256 lastSaveYear) = lsDate.GetDate();
 
         // Get current date from block timestamp
         (uint256 currentDay, uint256 currentMonth, uint256 currentYear) = block.timestamp.GetDate();
@@ -208,7 +221,6 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         super._update(from, to, ids, values);
     }
 
-    // Follower Token
     function buyFollowerTokens(uint256 quantity) external payable nonReentrant {
         uint256 totalPrice = (followerTokenPrice * quantity) / FOLLOWER_PRICE_PER_QUANTITY;
         if (quantity >= FOLLOWER_PRICE_PER_QUANTITY * 10) {
@@ -225,26 +237,25 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         followerTokenPrice = newPrice;
     }
 
-    // Function to follow a profile
     function followProfile(uint256 followerProfileId, uint256 followeeProfileId) external {
-        if (!ProfileTokens[msg.sender][followerProfileId]) {
+        if (!profileTokens[msg.sender][followerProfileId]) {
             revert Errors.Diary__ProfileNotOwnedByYou();
         }
         if (
-            ProfileTokens[msg.sender][followerProfileId] ==
-            ProfileTokens[msg.sender][followeeProfileId]
+            profileTokens[msg.sender][followerProfileId] ==
+            profileTokens[msg.sender][followeeProfileId]
         ) {
             revert Errors.Diary__NotAllowedToFollowYourself();
         }
 
-        if (ProfileOwnedBy[followeeProfileId] == address(0)) {
+        if (profileOwnedBy[followeeProfileId] == address(0)) {
             revert Errors.Diary__ProfileNotOwnedByAnyone();
         }
         if (balanceOf(msg.sender, FOLLOWER_TOKEN_ID) < 1) {
             revert Errors.Diary__NotEnoughFollowerToken();
         }
 
-        if (IsFollowing[msg.sender][followeeProfileId]) {
+        if (isFollowing[msg.sender][followeeProfileId]) {
             revert Errors.Diary__ProfileAlreadyFollowedByYou();
         }
 
@@ -252,7 +263,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         _safeTransferFrom(msg.sender, address(this), FOLLOWER_TOKEN_ID, 1, "");
 
         // Record that the user is now following the profileId
-        IsFollowing[msg.sender][followeeProfileId] = true;
+        isFollowing[msg.sender][followeeProfileId] = true;
         profileFollowers[followeeProfileId].push(msg.sender);
 
         profileFollowerIndexes[followeeProfileId][msg.sender] =
@@ -261,14 +272,13 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
 
         emit Events.ProfileFollowed(
             msg.sender,
-            ProfileOwnedBy[followeeProfileId],
+            profileOwnedBy[followeeProfileId],
             followeeProfileId
         );
     }
 
-    // Function to unfollow a profile
     function unfollowProfile(uint256 profileId) external {
-        if (!IsFollowing[msg.sender][profileId]) {
+        if (!isFollowing[msg.sender][profileId]) {
             revert Errors.Diary__ProfileNotFollowedByYou();
         }
 
@@ -276,7 +286,7 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         _safeTransferFrom(address(this), msg.sender, FOLLOWER_TOKEN_ID, 1, "");
 
         // Record that the user has unfollowed the profile
-        IsFollowing[msg.sender][profileId] = false;
+        isFollowing[msg.sender][profileId] = false;
 
         // Remove follower from the profileFollowers list in an efficient way
         uint256 followerIndex = profileFollowerIndexes[profileId][msg.sender];
@@ -292,6 +302,112 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
         // Clean up our index mapping
         delete profileFollowerIndexes[profileId][msg.sender];
 
-        emit Events.ProfileUnfollowed(msg.sender, ProfileOwnedBy[profileId], profileId);
+        emit Events.ProfileUnfollowed(msg.sender, profileOwnedBy[profileId], profileId);
+    }
+
+    modifier onlyProfileOwner(uint256 profileId) {
+        if (profileOwnedBy[profileId] != msg.sender) {
+            revert Errors.Diary__ProfileNotOwnedByYou();
+        }
+
+        _;
+    }
+
+    function setProfilePrivacy(
+        uint256 profileId,
+        bool _isPrivate
+    ) external onlyProfileOwner(profileId) {
+        // make the profile public
+        if (profileData[profileId].isPrivate && !_isPrivate) {
+            // Add this profile to list of public profiles
+            publicProfileIds.push(profileId);
+            profileIndexInPublic[profileId] = publicProfileIds.length - 1;
+
+            profileData[profileId].isPrivate = _isPrivate;
+            emit Events.ProfilePrivacyChanged(profileId, _isPrivate);
+        }
+        // make the profile private
+        if (!profileData[profileId].isPrivate && _isPrivate) {
+            uint256 indexToRemove = profileIndexInPublic[profileId];
+            uint256 lastIndex = publicProfileIds.length - 1;
+            if (indexToRemove != lastIndex) {
+                uint256 lastProfileId = publicProfileIds[lastIndex];
+
+                publicProfileIds[indexToRemove] = lastProfileId;
+                profileIndexInPublic[lastProfileId] = indexToRemove;
+            }
+            publicProfileIds.pop();
+            delete profileIndexInPublic[profileId];
+
+            profileData[profileId].isPrivate = _isPrivate;
+            emit Events.ProfilePrivacyChanged(profileId, _isPrivate);
+        }
+    }
+
+    function requestToFollowProfile(uint256 profileId) external {
+        if (!profileData[profileId].isPrivate) {
+            revert Errors.Diary__RequestedProfileIsNotPrivate();
+        }
+        if (profileOwnedBy[profileId] == msg.sender) {
+            revert Errors.Diary__NotAllowedToFollowYourself();
+        }
+
+        //initializeProfile(profileId);
+        profileData[profileId].followRequests[msg.sender] = true;
+
+        emit Events.FollowRequest(profileId, msg.sender);
+    }
+
+    function approveFollowRequest(
+        uint256 profileId,
+        address requester
+    ) external onlyProfileOwner(profileId) {
+        if (!profileData[profileId].isPrivate) {
+            revert Errors.Diary__RequestedProfileIsNotPrivate();
+        }
+
+        if (!profileData[profileId].followRequests[requester]) {
+            revert Errors.Diary__NoActiveFollowRequestForRequester();
+        }
+
+        // approve and follow
+        isFollowing[requester][profileId] = true;
+        profileFollowers[profileId].push(requester);
+        profileFollowerIndexes[profileId][requester] = profileFollowers[profileId].length - 1;
+
+        // remove the request
+        profileData[profileId].followRequests[requester] = false;
+
+        emit Events.FollowRequestApproved(profileId, requester);
+    }
+
+    function denyFollowRequest(
+        uint256 profileId,
+        address requester
+    ) external onlyProfileOwner(profileId) {
+        if (!profileData[profileId].isPrivate) {
+            revert Errors.Diary__RequestedProfileIsNotPrivate();
+        }
+
+        if (!profileData[profileId].followRequests[requester]) {
+            revert Errors.Diary__NoActiveFollowRequestForRequester();
+        }
+
+        // remove the request
+        profileData[profileId].followRequests[requester] = false;
+
+        // Assume same implementation as above for removing from the array
+
+        emit Events.FollowRequestDenied(profileId, requester);
+    }
+
+    function areFriends(uint256 profileId1, uint256 profileId2) public view returns (bool) {
+        return
+            isFollowing[profileOwnedBy[profileId1]][profileId2] &&
+            isFollowing[profileOwnedBy[profileId2]][profileId1];
+    }
+
+    function uri(uint256 id) public view override returns (string memory) {
+        return tokenUri[id];
     }
 }

@@ -2,4 +2,9 @@
 pragma solidity ^0.8.20;
 import "./Enums.sol";
 
-library Structs {}
+library Structs {
+    struct Profile {
+        bool isPrivate;
+        mapping(address => bool) followRequests;
+    }
+}

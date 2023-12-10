@@ -9,22 +9,7 @@ library Events {
         string indexed tokenUri
     );
 
-    event DiaryShared(
-        uint256 indexed diaryId,
-        address indexed diaryOwner,
-        address indexed sharedwith,
-        string metadata
-    );
-
-    event DiarySharingRevoked(
-        uint256 indexed diaryId,
-        address indexed diaryOwner,
-        address indexed sharedwith
-    );
-
     event SavingFeeChanged(uint256 indexed newFee);
-
-    event PublicKeySaved(address addr);
 
     // Profile Events
     event ProfileMint(
@@ -44,4 +29,9 @@ library Events {
         address indexed followeeAddress,
         uint256 indexed followedProfileId
     );
+
+    event ProfilePrivacyChanged(uint256 indexed profileId, bool isPrivate);
+    event FollowRequestApproved(uint256 indexed profileId, address indexed requester);
+    event FollowRequestDenied(uint256 indexed profileId, address indexed requester);
+    event FollowRequest(uint256 indexed profileId, address indexed requester);
 }

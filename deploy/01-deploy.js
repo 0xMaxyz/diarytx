@@ -5,7 +5,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     const { deployer } = await getNamedAccounts();
 
     const args = [
-        deployer,
         ethers.parseEther(process.env.INIT_DIARY_SAVING_FEE),
         ethers.parseEther(process.env.INIT_COVER_FEE),
         process.env.INIT_URI,
