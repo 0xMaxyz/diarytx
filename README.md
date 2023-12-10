@@ -1,4 +1,4 @@
-# Diary Smart Contract
+# DiaryTx (Cloudiary)
 
 ## Installation
 
