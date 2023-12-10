@@ -2,20 +2,26 @@ node_modules
 .env
 
 # Hardhat files
+
 /cache
 /artifacts
 
 # TypeChain files
+
 /typechain
 /typechain-types
 
 # solidity-coverage files
+
 /coverage
 /coverage.json
 
 ignore
-*.lock
-*.log
-*.ignore
+_.lock
+_.log
+\*.ignore
 /web
 /deployments
+gas-report.txt
+yarn.lock
+yarn-error.log

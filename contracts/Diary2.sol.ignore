@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+
+contract DailyDiary is ERC1155, Ownable {
+    using Strings for uint256;
+
+    uint256 public diaryMintFee;
+    uint256 public profileMintFee;
+    uint256 private diaryCounter = 0;
+    uint256 private profileCounter = 0;
+
+    mapping(address => uint256) public profileCount;
+    mapping(uint256 => address) public profileIdToOwner;
+
+    event ProfileMinted(address indexed owner, uint256 indexed profileId);
+    event DiaryMinted(address indexed owner, uint256 diaryId, uint256 profileId);
+
+    // Follower Token functionality
+    uint256 private constant FOLLOWER_TOKEN_ID = 1;
+    uint256 public followerTokenPrice = 0.1 ether; // per 100 follower token
+    uint256 private constant FOLLOWER_PRICE_PER_QUANTITY = 100;
+    uint256 public discountRate = 10;
+
+    struct LastMintDate {
+        uint day;
+        uint month;
+        uint year;
+    }
+
+    // Mapping from owner's address to last minted date
+    mapping(address => LastMintDate) public lastMintedDate;
+
+    constructor(
+        address initialOwner,
+        string memory _uri,
+        uint256 _initialDiaryMintFee,
+        uint256 _initialProfileMintFee
+    ) ERC1155(_uri) Ownable(initialOwner) {
+        diaryMintFee = _initialDiaryMintFee;
+        profileMintFee = _initialProfileMintFee;
+    }
+
+    
+
+    // The FollowerToken functionality already exists in your code.
+
+    // Mapping from profile ID to their followers addresses
+    mapping(uint256 => address[]) private profileFollowers;
+    // Mapping to check if a user is following another profile to prevent duplicates
+    mapping(address => mapping(uint256 => bool)) public isFollowing;
+
+
+
+
+
+
+
+
+
+    // Event for storing encrypted diary entries and sharing access
+    event DiaryEntryStored(address indexed owner, uint256 indexed profileId, string cid);
+    event AccessGranted(uint256 indexed profileId, string cid, address indexed grantee);
+    event AccessRevoked(uint256 indexed profileId, string cid, address indexed grantee);
+
+    // Mapping from profileId to a mapping of CID to an array of Ethereum addresses that have access
+    mapping(uint256 => mapping(string => address[])) private accessList;
+
+    // Function to store the CID of an encrypted diary entry and the encrypted entry key
+    function storeEncryptedDiaryEntry(
+        uint256 profileId,
+        string calldata cid,
+        string calldata encryptedEntryKey
+    ) external onlyProfileOwner(profileId) {
+        // Store CID and encrypted entry key
+        diaryEntriesCIDs[profileId].push(cid);
+
+        // In practice, you should encrypt the `encryptedEntryKey` and store it as well, associating it with `cid`.
+        // The following is a simplification for conceptual purposes.
+        // encryptedEntryKeys[cid] = encryptedEntryKey; (This line would be added with proper encryption in place)
+
+        emit DiaryEntryStored(msg.sender, profileId, cid);
+    }
+
+    // Function to grant access to an encrypted diary entry
+    function grantAccessToDiaryEntry(
+        uint256 profileId,
+        string calldata cid,
+        address grantee
+    ) external onlyProfileOwner(profileId) {
+        accessList[profileId][cid].push(grantee);
+
+        emit AccessGranted(profileId, cid, grantee);
+    }
+
+    // Function to revoke access to an encrypted diary entry
+    function revokeAccessToDiaryEntry(
+        uint256 profileId,
+        string calldata cid,
+        address grantee
+    ) external onlyProfileOwner(profileId) {
+        address[] storage grantedAccess = accessList[profileId][cid];
+
+        for (uint i = 0; i < grantedAccess.length; i++) {
+            if (grantedAccess[i] == grantee) {
+                // Remove grantee from the list
+                grantedAccess[i] = grantedAccess[grantedAccess.length - 1];
+                grantedAccess.pop();
+                emit AccessRevoked(profileId, cid, grantee);
+                break;
+            }
+        }
+    }
+
+    // Function to check if an address has access to a CID
+    function hasAccessToDiaryEntry(
+        uint256 profileId,
+        string calldata cid,
+        address requester
+    ) public view returns (bool) {
+        address[] memory grantedAccess = accessList[profileId][cid];
+
+        for (uint i = 0; i < grantedAccess.length; i++) {
+            if (grantedAccess[i] == requester) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Function for a grantee to decrypt the entry key - would be called off-chain
+    // In practice, this would involve interaction with an off-chain component to handle the decryption securely
+    function decryptEntryKey()
+        external
+        pure
+        returns (
+            /* arguments for encrypted entry key, grantee private encryption key */ string memory
+        )
+    {
+        // decrypt and return the entryKey
+    }
+
+    // ... (previous features code) ...
+
+// Mapping to keep record of shared diary entries
+// Mapping structure: diaryId => (ethereumAddress => accessBoolean)
+mapping(uint256 => mapping(address => bool)) private sharedDiaryEntries;
+
+// Events for sharing diary entries
+event DiaryEntryShared(uint256 indexed diaryId, address indexed with, uint256 indexed profileId);
+event DiaryEntryUnshared(uint256 indexed diaryId, address indexed with, uint256 indexed profileId);
+
+// Function to share a diary entry with an individual address
+function shareDiaryEntry(uint256 diaryId, address with) public {
+    require(profileIdToOwner[diaryEntriesToProfileId[diaryId]] == msg.sender, "Caller is not the owner of the diary.");
+    sharedDiaryEntries[diaryId][with] = true;
+    emit DiaryEntryShared(diaryId, with, diaryEntriesToProfileId[diaryId]);
+}
+
+// Function to unshare a diary entry with an individual address
+function unshareDiaryEntry(uint256 diaryId, address with) public {
+    require(profileIdToOwner[diaryEntriesToProfileId[diaryId]] == msg.sender, "Caller is not the owner of the diary.");
+    sharedDiaryEntries[diaryId][with] = false;
+    emit DiaryEntryUnshared(diaryId, with, diaryEntriesToProfileId[diaryId]);
+}
+
+// Function to check if an address has permission to view a diary entry
+function hasPermissionToViewDiaryEntry(uint256 diaryId, address requester) public view returns (bool) {
+    return sharedDiaryEntries[diaryId][requester];
+}
+
+// Off-chain key sharing mechanism:
+// This would presumably be handled by an off-chain component, such as a server or a decentralized messaging system,
+// where the diary owner sends an encrypted version of the diary entry key to the recipient.
+// This might look something like a secure message containing the encrypted entry key, 
+// with the message itself encrypted using the recipient's public key.
+
+
+}
