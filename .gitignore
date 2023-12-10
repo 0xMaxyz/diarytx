@@ -17,5 +17,5 @@ ignore
 *.lock
 *.log
 *.ignore
-web
-
+/web
+/deployments
