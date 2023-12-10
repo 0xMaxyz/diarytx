@@ -16,3 +16,4 @@ node_modules
 ignore
 *.lock
 *.log
+*.ignore

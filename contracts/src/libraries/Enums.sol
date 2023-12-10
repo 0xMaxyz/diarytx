@@ -2,14 +2,19 @@
 pragma solidity ^0.8.20;
 
 library Enums {
-    enum State {
-        Public,
+    enum DiaryVisibility {
         Private,
-        Follower
+        Public
     }
 
     enum ProfieVisibility {
         Private,
         Public
+    }
+
+    enum TokenType {
+        ProfileToken,
+        FollowerToken,
+        DiaryToken
     }
 }

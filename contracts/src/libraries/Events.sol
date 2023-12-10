@@ -4,14 +4,9 @@ import {Structs} from "./Structs.sol";
 
 library Events {
     event DiaryCreated(
-        address indexed diaryOwner,
-        Structs.DiaryMetadata metadata
-    );
-
-    event DiaryModified(
+        uint256 indexed profileTokenId,
         uint256 indexed diaryId,
-        address indexed diaryOwner,
-        Structs.DiaryMetadata indexed metadata
+        string indexed tokenUri
     );
 
     event DiaryShared(
@@ -33,9 +28,9 @@ library Events {
 
     // Profile Events
     event ProfileMint(
-        address profileOwner,
-        uint256 tokenId,
-        Structs.ProfileMetadata metadata
+        address indexed profileOwner,
+        uint256 indexed tokenId,
+        string indexed tokenUri
     );
     event FollowerTokensMint(address profileOwner, uint256 tokenId);
 }

@@ -10,4 +10,5 @@ library Errors {
     error Diary__NotSharedWithInput();
     error Diary__PublicKeyAlreadySaved();
     error Diary__ProfileExists(uint256);
+    error Diary__ProfileNotOwnedByYou();
 }
