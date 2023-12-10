@@ -185,4 +185,100 @@ const { developmentChains, networkConfig } = require("../../helper-hardhat.confi
                       .to.be.reverted;
               });
           });
+
+          describe("CreateDiary", () => {
+              let ownerProfileId;
+              const diaryUri = "diaryUri";
+              const DiarySavingFee = ethers.parseEther(process.env.INIT_DIARY_SAVING_FEE);
+              beforeEach(async () => {
+                  ownerProfileId = await diaryContract.publicProfileIds(0);
+              });
+
+              it("Allows an owned profile to create a diary without a fee if no diaries exist for the date", async () => {
+                  await expect(diaryContract.CreateDiary(ownerProfileId, diaryUri, 0)).to.emit(
+                      diaryContract,
+                      "DiaryCreated",
+                  );
+              });
+
+              it("Reverts when a diary creation is attempted from a non-owned profile", async () => {
+                  user1Signed = await ethers.getSigner(user1);
+                  await expect(
+                      diaryContract.connect(user1Signed).CreateDiary(ownerProfileId, diaryUri, 0),
+                  ).to.be.revertedWithCustomError(diaryContract, "Diary__ProfileNotOwnedByYou");
+              });
+
+              it("Allows a diary to be created with additional fee if diaries already exist for the date", async () => {
+                  // Create initial diary
+                  await diaryContract.CreateDiary(ownerProfileId, diaryUri, 0);
+
+                  // Attempt to create another diary on the same date with an additional saving fee
+                  await expect(
+                      diaryContract.CreateDiary(ownerProfileId, diaryUri, 0, {
+                          value: DiarySavingFee,
+                      }),
+                  ).to.emit(diaryContract, "DiaryCreated");
+              });
+
+              it("Reverts if a diary is attempted to be created on the same date without the additional fee", async () => {
+                  // Create initial diary
+                  await diaryContract.CreateDiary(ownerProfileId, diaryUri, 0);
+
+                  // Attempt to create another diary on the same date without the additional saving fee
+                  await expect(
+                      diaryContract.CreateDiary(ownerProfileId, diaryUri, 0),
+                  ).to.be.revertedWithCustomError(diaryContract, "Diary__InsufficientFee");
+              });
+          });
+
+          describe("Buy Follower Tokens", () => {
+              const followerTokenPrice = ethers.parseEther("1");
+              const FOLLOWER_PRICE_PER_QUANTITY = ethers.toBigInt(100);
+              const discountRate = ethers.toBigInt(10);
+              const FOLLOWER_TOKEN_ID = ethers.toBigInt(1);
+
+              it("Allows a user to buy follower tokens at the correct price", async () => {
+                  const quantity = ethers.toBigInt(1000);
+                  const totalPrice = (followerTokenPrice * quantity) / FOLLOWER_PRICE_PER_QUANTITY;
+
+                  await expect(
+                      diaryContract.buyFollowerTokens(quantity, { value: totalPrice }),
+                  ).to.emit(diaryContract, "TransferSingle");
+
+                  expect(await diaryContract.balanceOf(deployer, FOLLOWER_TOKEN_ID)).to.be.equal(
+                      2000,
+                  );
+              });
+
+              it("Applies a discount when a user buys follower tokens in bulk", async () => {
+                  const quantity = FOLLOWER_PRICE_PER_QUANTITY * ethers.toBigInt(10);
+                  let totalPrice = (followerTokenPrice * quantity) / FOLLOWER_PRICE_PER_QUANTITY;
+
+                  totalPrice =
+                      totalPrice - (totalPrice * discountRate) / FOLLOWER_PRICE_PER_QUANTITY;
+
+                  await expect(
+                      diaryContract.buyFollowerTokens(quantity, { value: totalPrice }),
+                  ).to.emit(diaryContract, "TransferSingle");
+              });
+
+              it("Reverts when not enough ether is sent to buy the desired quantity of follower tokens", async () => {
+                  const quantity = ethers.toBigInt(1000);
+                  const insufficientValue = ethers.toBigInt(1);
+
+                  await expect(
+                      diaryContract.buyFollowerTokens(quantity, { value: insufficientValue }),
+                  ).to.be.revertedWithCustomError(diaryContract, "Diary__InsufficientFee");
+              });
+
+              it("Mints the correct quantity of follower tokens", async () => {
+                  const quantity = ethers.toBigInt(3);
+                  const totalPrice = (followerTokenPrice * quantity) / FOLLOWER_PRICE_PER_QUANTITY;
+
+                  await diaryContract.buyFollowerTokens(quantity, { value: totalPrice });
+                  const balance = await diaryContract.balanceOf(deployer, FOLLOWER_TOKEN_ID);
+
+                  expect(balance).to.equal(quantity + ethers.toBigInt(1000));
+              });
+          });
       });
