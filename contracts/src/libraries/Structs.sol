@@ -7,4 +7,9 @@ library Structs {
         bool isPrivate;
         mapping(address => bool) followRequests;
     }
+
+    struct MoodHistory {
+        Enums.Mood mood;
+        uint256 timestamp;
+    }
 }

@@ -17,4 +17,36 @@ library Enums {
         FollowerToken,
         DiaryToken
     }
+
+    enum AiAssistance {
+        CoverGeneration,
+        MoodDetection,
+        MoodAnalysis,
+        MusicRecommendation,
+        MovieRecommendation,
+        BookRecommendation
+    }
+
+    enum Mood {
+        Angry,
+        Anxious,
+        Bored,
+        Calm,
+        Confused,
+        Disappointed,
+        Energetic,
+        Excited,
+        Grateful,
+        Happy,
+        Hopeful,
+        Insecure,
+        Jealous,
+        Lonely,
+        Motivated,
+        Overwhelmed,
+        Peaceful,
+        Proud,
+        Reflective,
+        Sad
+    }
 }

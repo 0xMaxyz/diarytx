@@ -18,4 +18,5 @@ library Errors {
     error Diary__ProfileNotFollowedByYou();
     error Diary__RequestedProfileIsNotPrivate();
     error Diary__NoActiveFollowRequestForRequester();
+    error Diary__AiAssistanceOnlyOnPublicMemories();
 }

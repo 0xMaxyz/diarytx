@@ -6,13 +6,22 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
+import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
 import "./libraries/Date.sol";
 import "./libraries/Errors.sol";
 import "./libraries/Structs.sol";
 import "./libraries/Events.sol";
 import "./libraries/Enums.sol";
 
-contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGuard {
+contract Diary is
+    ERC1155,
+    Ownable,
+    ERC1155Burnable,
+    ERC1155Supply,
+    ReentrancyGuard,
+    FunctionsClient
+{
     using Date for uint256;
 
     uint256 nonce;
@@ -35,6 +44,8 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     // Diary
     mapping(uint256 => address) private DiaryOwners;
     mapping(uint256 => Enums.DiaryVisibility) private diaryVisibility;
+    mapping(uint256 => Enums.Mood) private diaryMood;
+    mapping(address => Structs.MoodHistory[]) moodHistory;
 
     // Profiles
     mapping(address => mapping(uint256 => bool)) private profileTokens;
@@ -46,14 +57,18 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
     uint256[] public publicProfileIds;
     mapping(uint256 => uint256) public profileIndexInPublic;
 
+    bytes32 private immutable s_donId;
+
     // Token URIs
     mapping(uint256 => string) private tokenUri;
 
     constructor(
         uint256 diarySavingFee,
         uint256 diaryCoverFee,
-        string memory ownerProfileUri
-    ) ERC1155("") Ownable(msg.sender) {
+        string memory ownerProfileUri,
+        address routerAddress,
+        bytes32 donId
+    ) ERC1155("") Ownable(msg.sender) FunctionsClient(routerAddress) {
         DiarySavingFee = diarySavingFee;
         DiaryCoverFee = diaryCoverFee;
 
@@ -62,6 +77,8 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
 
         // Mint a profile for contract owner (add as public profile)
         mintProfile(ownerProfileUri, false);
+
+        s_donId = donId;
     }
 
     function CreateProfile(string memory profileUri, bool isPrivate) external payable {
@@ -426,5 +443,71 @@ contract Diary is ERC1155, Ownable, ERC1155Burnable, ERC1155Supply, ReentrancyGu
 
     function uri(uint256 id) public view override returns (string memory) {
         return tokenUri[id];
+    }
+
+    function requestAiAsistance(uint256 diaryTokenId, Enums.AiAssistance aiAT) private {
+        // The requested diaryTokenId's visibility shall be public
+        if (diaryVisibility[diaryTokenId] != Enums.DiaryVisibility.Public) {
+            revert Errors.Diary__AiAssistanceOnlyOnPublicMemories();
+        }
+        if (aiAT == Enums.AiAssistance.MoodDetection) {
+            // get tokenUri and send it to script, the script gets the markdown text of the diary and returns the detected mood
+            // sample token uri
+            // https://gist.githubusercontent.com/omni001s/d14b6720231e2db6b9ef78429b59ca1c/raw/280884356aedfa88879b16ab17dde306bbd462f4/diary.json
+        }
+    }
+
+    // Chainlink function
+    using FunctionsRequest for FunctionsRequest.Request;
+
+    bytes32 public s_lastRequestId;
+    bytes public s_lastResponse;
+    bytes public s_lastError;
+
+    // Custom error type
+    error UnexpectedRequestID(bytes32 requestId);
+
+    // Event to log responses
+    event Response(bytes32 indexed requestId, bytes response, bytes err);
+
+    function sendRequest(
+        string calldata source,
+        FunctionsRequest.Location secretsLocation,
+        bytes calldata encryptedSecretsReference,
+        string[] calldata args,
+        bytes[] calldata bytesArgs,
+        uint64 subscriptionId,
+        uint32 callbackGasLimit
+    ) private {
+        FunctionsRequest.Request memory req;
+        req.initializeRequest(
+            FunctionsRequest.Location.Inline,
+            FunctionsRequest.CodeLanguage.JavaScript,
+            source
+        );
+        req.secretsLocation = secretsLocation;
+        req.encryptedSecretsReference = encryptedSecretsReference;
+        if (args.length > 0) {
+            req.setArgs(args);
+        }
+        if (bytesArgs.length > 0) {
+            req.setBytesArgs(bytesArgs);
+        }
+        s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, s_donId);
+    }
+
+    function fulfillRequest(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) internal override {
+        if (s_lastRequestId != requestId) {
+            revert UnexpectedRequestID(requestId);
+        }
+        s_lastResponse = response;
+        s_lastError = err;
+
+        // Emit an event to log the response
+        emit Response(requestId, s_lastResponse, s_lastError);
     }
 }
