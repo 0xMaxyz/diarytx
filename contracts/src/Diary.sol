@@ -445,7 +445,15 @@ contract Diary is
         return tokenUri[id];
     }
 
-    function requestAiAsistance(uint256 diaryTokenId, Enums.AiAssistance aiAT) private {
+    ///@dev a sample script for diary extraction from metadata is in ./scripts/mood.js
+    ///@dev the ./moodDetectorWorker.js is a sample cloudflare worker file that I used to clasify the moods
+    function requestAiAsistance(
+        uint256 diaryTokenId,
+        Enums.AiAssistance aiAT,
+        string calldata script,
+        bytes calldata encryptedSecretsReference,
+        uint64 subscriptionId
+    ) private {
         // The requested diaryTokenId's visibility shall be public
         if (diaryVisibility[diaryTokenId] != Enums.DiaryVisibility.Public) {
             revert Errors.Diary__AiAssistanceOnlyOnPublicMemories();
@@ -454,6 +462,18 @@ contract Diary is
             // get tokenUri and send it to script, the script gets the markdown text of the diary and returns the detected mood
             // sample token uri
             // https://gist.githubusercontent.com/omni001s/d14b6720231e2db6b9ef78429b59ca1c/raw/280884356aedfa88879b16ab17dde306bbd462f4/diary.json
+
+            string[] memory args = new string[](1);
+            args[0] = tokenUri[diaryTokenId];
+
+            sendRequest(
+                script,
+                FunctionsRequest.Location.DONHosted,
+                encryptedSecretsReference,
+                args,
+                subscriptionId,
+                300_000
+            );
         }
     }
 
@@ -474,8 +494,7 @@ contract Diary is
         string calldata source,
         FunctionsRequest.Location secretsLocation,
         bytes calldata encryptedSecretsReference,
-        string[] calldata args,
-        bytes[] calldata bytesArgs,
+        string[] memory args,
         uint64 subscriptionId,
         uint32 callbackGasLimit
     ) private {
@@ -489,9 +508,6 @@ contract Diary is
         req.encryptedSecretsReference = encryptedSecretsReference;
         if (args.length > 0) {
             req.setArgs(args);
-        }
-        if (bytesArgs.length > 0) {
-            req.setBytesArgs(bytesArgs);
         }
         s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, s_donId);
     }
